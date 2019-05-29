@@ -43,7 +43,7 @@ def main(df=pd.DataFrame(), start_index=0):
     vc = df.status.value_counts()
     print(vc[vc > 1])
     print(
-        f'{100 - 100 * ((df.status == "pending") | df.status.str.contains("error")).sum() / df.shape[0]:.2f}% complete')
+        f'{100 - 100 * ((df.status == "pending") | df.status.str.contains("error")).sum() / df.shape[0]:.2f}% complete\n')
 
     # Start at index given
     df = df[df.index >= start_index]
@@ -129,9 +129,12 @@ def check_rows(driver, i, url, api):
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
                         found_files += [filename]
                     elif not (filename.lower().endswith('.tif')
+                              or filename.lower().endswith('.jpg')
                               or filename.lower().endswith('.pdf')
+                              or filename.lower().endswith('.pds')
                               or filename.lower().endswith('.xls')
                               or filename.lower().endswith('.xlsx')
+                              or filename.lower().endswith('.xlsm')
                               or filename.lower().endswith('.doc')
                               or filename.lower().endswith('.docx')
                               or filename.lower().endswith('.xml')):
