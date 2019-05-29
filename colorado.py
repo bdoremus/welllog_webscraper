@@ -1,5 +1,11 @@
 """
 Scan through the html links to colorado's website, and save any .las files
+
+TODO:
+    Add logging
+    Check that API matches file
+    Figure out how to handle files without extensions
+    Figure out how to handle non-las files
 """
 
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +40,9 @@ def main(df=pd.DataFrame(), start_index=0):
         df = df.assign(status='pending')
     df.status.fillna('pending', inplace=True)
 
-    print(df.status.value_counts())
-    print(f'{100*(df.status == "complete").sum() / df.shape[0]:.2f}% complete')
+    vc = df.status.value_counts()
+    print(vc[vc > 1])
+    print(f'{100-100*((df.status == "pending") | df.status.str.contains("error")).sum() / df.shape[0]:.2f}% complete')
 
     # Start at index given
     df = df[df.index >= start_index]
@@ -45,68 +52,59 @@ def main(df=pd.DataFrame(), start_index=0):
 
     # Iterate over entries (web addresses)
     try:
-        for i, (url, api) in df[['Docs', 'API']][df.status != 'complete'].copy().iterrows():
+        for i, (url, api) in df[['Docs', 'API']][(df.status == 'pending') |
+                                                 df.status.str.contains('error')].copy().iterrows():
             stdout.write(f"\r{i}   ")
             stdout.flush()
 
-            # open page
-            driver.get(url)
+            try:
+                # open page
+                driver.get(url)
+                found_files = []
 
-            # See if the last row is a list of page numbers
-            last_row = driver.find_elements_by_tag_name('tr')[-1]
-            last_row_list = last_row.text.split(' ')
-            if last_row_list[0] == '1':
-                # Multiple pages
-                for page_num in last_row_list:
-                    stdout.write(f"\r{i}.{page_num}")
-                    stdout.flush()
-                    if page_num != '1':
-                        # Advance to the next page
-                        last_row.find_element_by_link_text(page_num).send_keys(Keys.RETURN)
-                        last_row = driver.find_elements_by_tag_name('tr')[-1]
-                    check_rows(driver, f'{i}.{page_num}', url, api)
-            else:
-                # Only one page
-                check_rows(driver, i, url, api)
+                # See if the last row is a list of page numbers
+                last_row = driver.find_elements_by_tag_name('tr')[-1]
+                last_row_list = last_row.text.split(' ')
+                if last_row_list[0] == '1':
+                    # Multiple pages
+                    for page_num in last_row_list:
+                        stdout.write(f"\r{i}.{page_num}")
+                        stdout.flush()
+                        if page_num != '1':
+                            # Advance to the next page
+                            last_row.find_element_by_link_text(page_num).send_keys(Keys.RETURN)
+                            last_row = driver.find_elements_by_tag_name('tr')[-1]
+                        found_files += check_rows(driver, f'{i}.{page_num}', url, api)
+                else:
+                    # Only one page
+                    found_files += check_rows(driver, i, url, api)
 
-            df.loc[i, 'status'] = 'complete'
+                df.at[i, 'status'] = found_files if found_files else 'no files found'
 
-    # For all captured errors, keep going!
-    except WebDriverException as e:
-        # Can't open page
-        df.loc[i, 'status'] = "can't open page (WebDriverException)"
-        print(f'\nERROR: {e}\nRestarting...')
-        main(df, i+1)
-    except TimeoutError as e:
-        num_prior_timeouts = re.search(r'timeout error \(\d+\)', df.loc[i, 'status'])
-        if num_prior_timeouts:
-            num_prior_timeouts = int(num_prior_timeouts.group(0))
-            df.loc[i, 'status'] = f'timeout error ({num_prior_timeouts + 1})'
-
-            # try up to 5 times
-            print(f'\nERROR {e}\nRestarting...')
-            if num_prior_timeouts < 5:
-                main(df, i)
-            else:
-                main(df, i+1)
-    except MaxRetryError as e:
-        df.loc[i, 'status'] = 'max retry error'
-        print(f'\nERROR: {e}\nRestarting...')
-        main(df, i+1)
-    except ConnectionError as e:
-        df.loc[i, 'status'] = 'general connection error'
-        print(f'\nERROR: {e}\nRestarting...')
-        main(df, i+1)
-    except ReadTimeout as e:
-        df.loc[i, 'status'] = 'read timeout error'
-        print(f'\nERROR: {e}\nRestarting...')
-        main(df, i+1)
-    except Exception as e:
-        df.loc[i, 'status'] = f'error without except: {e}'
-        print(f'\nUnhandled error: {e}\nQuitting...')
-        raise
+            # For all captured errors, keep going!
+            except TimeoutError as e:
+                df.at[i, 'status'] = 'timeout error'
+                print(f'\nERROR: {e}')
+            except MaxRetryError as e:
+                df.at[i, 'status'] = 'max retry error'
+                print(f'\nERROR: {e}')
+            except ConnectionError as e:
+                df.at[i, 'status'] = 'general connection error'
+                print(f'\nERROR: {e}')
+            except ReadTimeout as e:
+                df.at[i, 'status'] = 'read timeout error'
+                print(f'\nERROR: {e}')
+            except WebDriverException as e:
+                # Can't open page
+                df.at[i, 'status'] = "can't open page error (general WebDriverException)"
+                print(f'\nERROR: {e}')
+            except Exception as e:
+                df.at[i, 'status'] = f'unhandled error: {e}'
+                print(f'\nUnhandled error: {e}')
+                print(f'\t{dt.now()}')
+                raise
     finally:
-        print(f'\n\n{dt.now()}')
+        print('\nUNHANDLED ERROR ENCOUNTERED.  SAVE AND QUIT.')
         df.to_csv(INPUT_FILENAME, index=False)
         driver.quit()
 
@@ -120,6 +118,7 @@ def load_df():
 
 
 def check_rows(driver, i, url, api):
+    found_files = []
     # Check the download link in each row
     for row in driver.find_elements_by_tag_name('tr'):
         try:
@@ -138,19 +137,25 @@ def check_rows(driver, i, url, api):
                         print(f'API: {api}')
                         print('\t"' + filename + '"')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
+                        found_files += [filename]
                     elif not (filename.lower().endswith('.tif')
                             or filename.lower().endswith('.pdf')
                             or filename.lower().endswith('.xls')
                             or filename.lower().endswith('.xlsx')
+                            or filename.lower().endswith('.doc')
+                            or filename.lower().endswith('.docx')
                             or filename.lower().endswith('.xml')):
                         print(f'\n{i} UNEXPECTED FILE TYPE (still downloading)')
                         print(f'URL: {url}')
                         print(f'API: {api}')
                         print('\t"' + filename + '"')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
+                        found_files += [filename]
 
         except NoSuchElementException:
             pass
+
+    return found_files
 
 
 def download_file(url, file_path):
