@@ -42,7 +42,8 @@ def main(df=pd.DataFrame(), start_index=0):
 
     vc = df.status.value_counts()
     print(vc[vc > 1])
-    print(f'{100-100*((df.status == "pending") | df.status.str.contains("error")).sum() / df.shape[0]:.2f}% complete')
+    print(
+        f'{100 - 100 * ((df.status == "pending") | df.status.str.contains("error")).sum() / df.shape[0]:.2f}% complete')
 
     # Start at index given
     df = df[df.index >= start_index]
@@ -82,21 +83,8 @@ def main(df=pd.DataFrame(), start_index=0):
                 df.at[i, 'status'] = found_files if found_files else 'no files found'
 
             # For all captured errors, keep going!
-            except TimeoutError as e:
-                df.at[i, 'status'] = 'timeout error'
-                print(f'\nERROR: {e}')
-            except MaxRetryError as e:
-                df.at[i, 'status'] = 'max retry error'
-                print(f'\nERROR: {e}')
-            except ConnectionError as e:
-                df.at[i, 'status'] = 'general connection error'
-                print(f'\nERROR: {e}')
-            except ReadTimeout as e:
-                df.at[i, 'status'] = 'read timeout error'
-                print(f'\nERROR: {e}')
-            except WebDriverException as e:
-                # Can't open page
-                df.at[i, 'status'] = "can't open page error (general WebDriverException)"
+            except (TimeoutError, MaxRetryError, ConnectionError, ReadTimeout, WebDriverException) as e:
+                df.at[i, 'status'] = f'ERROR: {e}'
                 print(f'\nERROR: {e}')
             except Exception as e:
                 df.at[i, 'status'] = f'unhandled error: {e}'
@@ -132,23 +120,23 @@ def check_rows(driver, i, url, api):
                 if filename:
                     filename = filename.group(1).strip()
                     if filename.lower().endswith('.las'):
-                        print(f'\n{i} LAS file found: downloading')
-                        print(f'URL: {url}')
-                        print(f'API: {api}')
-                        print('\t"' + filename + '"')
+                        print(f'\n\tDownloading LAS file')
+                        print(f'\tURL: {url}')
+                        print(f'\tAPI: {api}')
+                        print(f'\tFilename: "{filename}"')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
                         found_files += [filename]
                     elif not (filename.lower().endswith('.tif')
-                            or filename.lower().endswith('.pdf')
-                            or filename.lower().endswith('.xls')
-                            or filename.lower().endswith('.xlsx')
-                            or filename.lower().endswith('.doc')
-                            or filename.lower().endswith('.docx')
-                            or filename.lower().endswith('.xml')):
-                        print(f'\n{i} UNEXPECTED FILE TYPE (still downloading)')
-                        print(f'URL: {url}')
-                        print(f'API: {api}')
-                        print('\t"' + filename + '"')
+                              or filename.lower().endswith('.pdf')
+                              or filename.lower().endswith('.xls')
+                              or filename.lower().endswith('.xlsx')
+                              or filename.lower().endswith('.doc')
+                              or filename.lower().endswith('.docx')
+                              or filename.lower().endswith('.xml')):
+                        print(f'\n\tUNEXPECTED FILE TYPE (still downloading)')
+                        print(f'\tURL: {url}')
+                        print(f'\tAPI: {api}')
+                        print(f'\tFilename: "{filename}"')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
                         found_files += [filename]
 
