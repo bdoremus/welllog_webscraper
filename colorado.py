@@ -83,12 +83,14 @@ def main(df=pd.DataFrame(), start_index=0):
                 df.at[i, 'status'] = found_files if found_files else 'no files found'
 
             # For all captured errors, keep going!
-            except (TimeoutError, MaxRetryError, ConnectionError, ReadTimeout, WebDriverException) as e:
+            except (TimeoutError, MaxRetryError, ConnectionError, ReadTimeout, WebDriverException, IndexError) as e:
                 df.at[i, 'status'] = f'ERROR: {e}'
                 print(f'\nERROR: {e}')
+                print(f'\t{url}')
             except Exception as e:
                 df.at[i, 'status'] = f'unhandled error: {e}'
                 print(f'\nUnhandled error: {e}')
+                print(f'\t{url}')
                 print(f'\t{dt.now()}')
                 raise
     finally:
@@ -123,7 +125,7 @@ def check_rows(driver, i, url, api):
                         print(f'\n\tDownloading LAS file')
                         print(f'\tURL: {url}')
                         print(f'\tAPI: {api}')
-                        print(f'\tFilename: "{filename}"')
+                        print(f'\tFilename: {filename}')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
                         found_files += [filename]
                     elif not (filename.lower().endswith('.tif')
@@ -136,7 +138,7 @@ def check_rows(driver, i, url, api):
                         print(f'\n\tUNEXPECTED FILE TYPE (still downloading)')
                         print(f'\tURL: {url}')
                         print(f'\tAPI: {api}')
-                        print(f'\tFilename: "{filename}"')
+                        print(f'\tFilename: \{filename}')
                         download_file(download_url, OUTPUT_FOLDERNAME / filename)
                         found_files += [filename]
 
